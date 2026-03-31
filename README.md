@@ -42,6 +42,3 @@ All scripts use `np.random.seed(42)` for reproducibility.
 - **MIMIC-IV**: https://physionet.org/content/mimiciv/2.2/
 - **Chapman-Shaoxing**: https://figshare.com/collections/ChapmanECG/4560497/2
 
-### License
-
-Released under the MIT License for academic use.
