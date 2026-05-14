@@ -16,7 +16,7 @@ Bash
 pip install numpy pandas scipy matplotlib seaborn scikit-learn wfdb shap
 Note: The wfdb library is required to stream physiological data from PhysioNet, and an active internet connection is necessary when running Scripts 1 and 2.
 
-📂 Repository Structure and Scripts
+Repository Structure and Scripts
 1. code1_ecg_preprocessing.py
 Description: Demonstrates the foundational steps of clinical signal processing. This script dynamically fetches real patient recordings (Normal Sinus Rhythm and Myocardial Infarction) from the PTB-XL database. It applies a 4th-order Butterworth bandpass filter to remove baseline wander and high-frequency noise, followed by dynamic thresholding for R-peak detection.
 
@@ -34,7 +34,7 @@ Description: Illustrates the advantage of embedding physiological constraints in
 
 Outputs Generated: fig_physics_informed.png
 
-🚀 Usage
+Usage
 You can run the scripts sequentially from your terminal. Because Scripts 1 and 2 stream data directly from PhysioNet, the initial execution may take a minute depending on your connection speed.
 
 Bash
@@ -43,7 +43,7 @@ python code2_classification_pipeline.py
 python code3_physics_informed.py
 For immediate, browser-based execution without local environment setup, use the interactive Google Colab Notebook.
 
-📊 Public Datasets Referenced
+Public Datasets Referenced
 The models and methodologies discussed in the chapter and utilized in this repository draw upon the following open-access clinical databases:
 
 PTB-XL (Used in codebase): A large publicly available electrocardiography dataset.
