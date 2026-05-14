@@ -1,227 +1,135 @@
 """
-Supplementary Code 2: ECG Classification with Gradient Boosting
-Chapter 10 - Modeling Ischemic and Electrical Heart Disorders
+Supplementary Code 2: ECG Classification Pipeline
+Chapter: Modeling Ischemic and Electrical Heart Disorders
 
 Demonstrates:
-  - Generating a labeled ECG feature dataset (3 classes)
-  - Training a Gradient Boosting classifier with patient-level splits
-  - Evaluation: ROC curves, confusion matrix, calibration curve
-  - Feature importance via permutation importance
-
-Requirements: numpy, pandas, scikit-learn, matplotlib
+  - Extracting features from 500 real PTB-XL patient records
+  - Gradient Boosting classification with strict patient-level GroupKFold splits
+  - Generating performance metrics, confusion matrix, and SHAP explanations
 """
 
-import numpy as np
 import pandas as pd
+import numpy as np
+import wfdb
+import ast
 import matplotlib.pyplot as plt
+import seaborn as sns
+import shap
+from scipy.signal import find_peaks, butter, filtfilt
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.model_selection import GroupKFold
-from sklearn.metrics import (roc_auc_score, classification_report,
-                             confusion_matrix, ConfusionMatrixDisplay,
-                             roc_curve, auc)
-from sklearn.calibration import calibration_curve
-from sklearn.inspection import permutation_importance
-from sklearn.preprocessing import label_binarize
+from sklearn.metrics import roc_auc_score, classification_report, confusion_matrix
 import warnings
 warnings.filterwarnings('ignore')
 
-np.random.seed(42)
+def bandpass_filter(data, fs=100, low=0.5, high=40.0, order=4):
+    nyq = 0.5 * fs
+    b, a = butter(order, [low / nyq, high / nyq], btype='band')
+    return filtfilt(b, a, data)
 
-# ----------------------------------------------------------------
-# 1. Generate synthetic labeled dataset (simulating extracted ECG features)
-# ----------------------------------------------------------------
-def generate_dataset(n_patients=500):
-    """
-    Create a synthetic dataset of ECG-derived features for 3 conditions.
-    Each patient contributes 1-3 recordings (to test patient-level splits).
-    """
-    records = []
-    patient_id = 0
-    labels_map = {0: 'Normal', 1: 'Ischemia', 2: 'Arrhythmia'}
+if __name__ == '__main__':
+    print("Loading PTB-XL metadata (this requires internet access)...")
+    df = pd.read_csv('https://physionet.org/files/ptb-xl/1.0.3/ptbxl_database.csv', index_col='ecg_id')
+    df.scp_codes = df.scp_codes.apply(lambda x: ast.literal_eval(x))
 
-    for label in [0, 1, 2]:
-        n_pat = n_patients // 3
-        for _ in range(n_pat):
-            n_recs = np.random.choice([1, 2, 3], p=[0.5, 0.3, 0.2])
-            for _ in range(n_recs):
-                # Overlapping distributions to produce realistic (imperfect) classification
-                if label == 0:  # Normal
-                    feats = {
-                        'mean_hr': 74 + np.random.randn() * 16,
-                        'hr_variability': 18 + np.random.randn() * 10,
-                        'st_deviation': 0.0 + np.random.randn() * 0.15,
-                        'qrs_duration': 92 + np.random.randn() * 16,
-                        'qt_interval': 400 + np.random.randn() * 35,
-                        'p_wave_present': np.random.choice([0, 1], p=[0.08, 0.92]),
-                        'rr_irregularity': 0.05 + abs(np.random.randn()) * 0.05,
-                        'age': 55 + np.random.randn() * 15,
-                        'troponin': 0.03 + abs(np.random.randn()) * 0.06,
-                    }
-                elif label == 1:  # Ischemia
-                    feats = {
-                        'mean_hr': 80 + np.random.randn() * 17,
-                        'hr_variability': 14 + np.random.randn() * 9,
-                        'st_deviation': -0.10 + np.random.randn() * 0.16,
-                        'qrs_duration': 96 + np.random.randn() * 16,
-                        'qt_interval': 412 + np.random.randn() * 36,
-                        'p_wave_present': np.random.choice([0, 1], p=[0.10, 0.90]),
-                        'rr_irregularity': 0.06 + abs(np.random.randn()) * 0.05,
-                        'age': 63 + np.random.randn() * 13,
-                        'troponin': 0.08 + abs(np.random.randn()) * 0.10,
-                    }
-                else:  # Arrhythmia
-                    feats = {
-                        'mean_hr': 85 + np.random.randn() * 22,
-                        'hr_variability': 25 + np.random.randn() * 14,
-                        'st_deviation': -0.02 + np.random.randn() * 0.15,
-                        'qrs_duration': 105 + np.random.randn() * 22,
-                        'qt_interval': 425 + np.random.randn() * 38,
-                        'p_wave_present': np.random.choice([0, 1], p=[0.35, 0.65]),
-                        'rr_irregularity': 0.09 + abs(np.random.randn()) * 0.08,
-                        'age': 60 + np.random.randn() * 15,
-                        'troponin': 0.04 + abs(np.random.randn()) * 0.07,
-                    }
-                feats['patient_id'] = patient_id
-                feats['label'] = label
-                records.append(feats)
-            patient_id += 1
+    agg_df = pd.read_csv('https://physionet.org/files/ptb-xl/1.0.3/scp_statements.csv', index_col=0)
+    agg_df = agg_df[agg_df.diagnostic == 1]
 
-    return pd.DataFrame(records)
+    def aggregate_diagnostic(y_dic):
+        tmp = []
+        for key in y_dic.keys():
+            if key in agg_df.index:
+                tmp.append(agg_df.loc[key].diagnostic_class)
+        return list(set(tmp))
 
-# ----------------------------------------------------------------
-# 2. Train and evaluate with patient-level cross-validation
-# ----------------------------------------------------------------
-df = generate_dataset(n_patients=600)
+    df['diagnostic_superclass'] = df.scp_codes.apply(aggregate_diagnostic)
 
-feature_cols = ['mean_hr', 'hr_variability', 'st_deviation', 'qrs_duration',
-                'qt_interval', 'p_wave_present', 'rr_irregularity', 'age',
-                'troponin']
-X = df[feature_cols].values
-y = df['label'].values
-groups = df['patient_id'].values
+    def get_label(classes):
+        if 'MI' in classes and 'NORM' not in classes: return 1
+        if 'NORM' in classes and 'MI' not in classes: return 0
+        return -1
 
-print(f"Dataset: {len(df)} recordings from {df['patient_id'].nunique()} patients")
-print(f"Class distribution: {dict(zip(*np.unique(y, return_counts=True)))}\n")
+    df['label'] = df.diagnostic_superclass.apply(get_label)
+    df = df[df.label != -1]
 
-# Patient-level GroupKFold (no leakage)
-gkf = GroupKFold(n_splits=5)
-y_true_all, y_prob_all = [], []
+    # Process 500 records for demonstration
+    df = df.sample(n=500, random_state=42)
 
-for fold, (train_idx, test_idx) in enumerate(gkf.split(X, y, groups)):
-    X_train, X_test = X[train_idx], X[test_idx]
-    y_train, y_test = y[train_idx], y[test_idx]
+    features_list = []
+    print(f"Streaming and extracting features from {len(df)} records. This takes a minute...")
 
-    # Confirm no patient leakage
-    train_pats = set(groups[train_idx])
-    test_pats = set(groups[test_idx])
-    assert len(train_pats & test_pats) == 0, "Patient leakage detected!"
+    for idx, row in df.iterrows():
+        try:
+            file_path = row['filename_lr']
+            parts = file_path.split('/')
+            dir_path = '/'.join(parts[:-1])
+            base_name = parts[-1]
+            
+            remote_dir = f"ptb-xl/1.0.3/{dir_path}"
+            record = wfdb.rdrecord(base_name, pn_dir=remote_dir)
+            raw_signal = record.p_signal[:, 0] 
+            
+            clean_signal = bandpass_filter(raw_signal)
+            threshold = np.max(clean_signal) * 0.4
+            peaks, _ = find_peaks(clean_signal, height=threshold, distance=40) 
+            
+            if len(peaks) < 3: continue
 
-    clf = GradientBoostingClassifier(
-        n_estimators=100, max_depth=4, learning_rate=0.1,
-        subsample=0.8, random_state=42
-    )
-    clf.fit(X_train, y_train)
+            rr_intervals = np.diff(peaks) / 100.0
+            hr_bpm = 60.0 / rr_intervals
+            st_offset = int(0.08 * 100)
+            st_vals = [clean_signal[pk + st_offset] for pk in peaks if pk + st_offset < len(clean_signal)]
 
-    probs = clf.predict_proba(X_test)
-    y_true_all.append(y_test)
-    y_prob_all.append(probs)
+            features_list.append({
+                'age': row['age'],
+                'mean_hr': np.mean(hr_bpm),
+                'hr_variability': np.std(hr_bpm),
+                'rmssd': np.sqrt(np.mean(np.diff(rr_intervals * 1000) ** 2)),
+                'st_deviation': np.mean(st_vals) if st_vals else 0.0,
+                'patient_id': row['patient_id'],
+                'label': row['label']
+            })
+        except Exception:
+            continue
 
-    # Per-fold macro AUC
-    y_test_bin = label_binarize(y_test, classes=[0, 1, 2])
-    fold_auc = roc_auc_score(y_test_bin, probs, multi_class='ovr',
-                             average='macro')
-    print(f"  Fold {fold+1}: macro AUROC = {fold_auc:.3f}  "
-          f"(train={len(train_idx)}, test={len(test_idx)})")
+    features_df = pd.DataFrame(features_list)
+    print(f"Extraction complete. Training model on {len(features_df)} valid records...")
 
-y_true_all = np.concatenate(y_true_all)
-y_prob_all = np.vstack(y_prob_all)
-y_pred_all = np.argmax(y_prob_all, axis=1)
+    X = features_df.drop(columns=['patient_id', 'label']).values
+    y = features_df['label'].values
+    groups = features_df['patient_id'].values
+    feature_names = features_df.drop(columns=['patient_id', 'label']).columns
 
-# ----------------------------------------------------------------
-# 3. Overall metrics
-# ----------------------------------------------------------------
-print("\n=== Classification Report (pooled across folds) ===")
-print(classification_report(y_true_all, y_pred_all,
-                            target_names=['Normal', 'Ischemia', 'Arrhythmia']))
+    gkf = GroupKFold(n_splits=5)
+    clf = GradientBoostingClassifier(n_estimators=100, max_depth=3, random_state=42)
 
-y_true_bin = label_binarize(y_true_all, classes=[0, 1, 2])
-overall_auc = roc_auc_score(y_true_bin, y_prob_all, multi_class='ovr',
-                            average='macro')
-print(f"Overall macro AUROC: {overall_auc:.3f}")
+    y_true_all, y_prob_all, y_pred_all = [], [], []
 
-# ----------------------------------------------------------------
-# 4. Plots
-# ----------------------------------------------------------------
-fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    for train_idx, test_idx in gkf.split(X, y, groups):
+        clf.fit(X[train_idx], y[train_idx])
+        y_true_all.extend(y[test_idx])
+        y_prob_all.extend(clf.predict_proba(X[test_idx])[:, 1])
+        y_pred_all.extend(clf.predict(X[test_idx]))
 
-# 4a. ROC curves
-class_names = ['Normal', 'Ischemia', 'Arrhythmia']
-colors = ['#0D9488', '#EA580C', '#2E5C8A']
-for i, (name, color) in enumerate(zip(class_names, colors)):
-    fpr, tpr, _ = roc_curve(y_true_bin[:, i], y_prob_all[:, i])
-    roc_auc_val = auc(fpr, tpr)
-    axes[0].plot(fpr, tpr, color=color, lw=2,
-                 label=f'{name} (AUC={roc_auc_val:.2f})')
-axes[0].plot([0, 1], [0, 1], 'k--', lw=1)
-axes[0].set_xlabel('False Positive Rate')
-axes[0].set_ylabel('True Positive Rate')
-axes[0].set_title('(a) ROC Curves')
-axes[0].legend(fontsize=9)
+    print("\n=== Model Results ===")
+    print(f"Overall AUROC: {roc_auc_score(y_true_all, y_prob_all):.3f}")
+    print(classification_report(y_true_all, y_pred_all, target_names=['Normal', 'MI']))
 
-# 4b. Confusion matrix
-cm = confusion_matrix(y_true_all, y_pred_all)
-disp = ConfusionMatrixDisplay(cm, display_labels=class_names)
-disp.plot(ax=axes[1], cmap='Blues', colorbar=False)
-axes[1].set_title('(b) Confusion Matrix')
+    # Generate Confusion Matrix
+    cm = confusion_matrix(y_true_all, y_pred_all)
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Normal', 'MI'], yticklabels=['Normal', 'MI'])
+    plt.ylabel('Actual Label'); plt.xlabel('Predicted Label')
+    plt.title('Illustrative Confusion Matrix (PTB-XL Subset)')
+    plt.tight_layout()
+    plt.savefig('fig_worked_example_cm.png', dpi=300)
 
-# 4c. Calibration curve (ischemia class)
-prob_true, prob_pred = calibration_curve(y_true_bin[:, 1], y_prob_all[:, 1],
-                                         n_bins=8, strategy='uniform')
-axes[2].plot(prob_pred, prob_true, 's-', color='#EA580C', lw=2,
-             label='Ischemia class')
-axes[2].plot([0, 1], [0, 1], 'k--', lw=1, label='Perfect calibration')
-axes[2].set_xlabel('Mean Predicted Probability')
-axes[2].set_ylabel('Fraction of Positives')
-axes[2].set_title('(c) Calibration Curve')
-axes[2].legend(fontsize=9)
-
-plt.tight_layout()
-plt.savefig('/home/claude/supplementary_code/fig_classification_results.png',
-            dpi=150, bbox_inches='tight')
-plt.close()
-
-# ----------------------------------------------------------------
-# 5. Feature importance (permutation-based)
-# ----------------------------------------------------------------
-# Refit on full data for importance
-clf_full = GradientBoostingClassifier(
-    n_estimators=100, max_depth=4, learning_rate=0.1,
-    subsample=0.8, random_state=42
-)
-clf_full.fit(X, y)
-
-result = permutation_importance(clf_full, X, y, n_repeats=10,
-                                random_state=42, scoring='accuracy')
-sorted_idx = result.importances_mean.argsort()[::-1]
-
-fig, ax = plt.subplots(figsize=(8, 5))
-feature_labels = np.array(feature_cols)
-ax.barh(range(len(sorted_idx)), result.importances_mean[sorted_idx],
-        xerr=result.importances_std[sorted_idx],
-        color='#2E5C8A', alpha=0.85)
-ax.set_yticks(range(len(sorted_idx)))
-ax.set_yticklabels(feature_labels[sorted_idx])
-ax.invert_yaxis()
-ax.set_xlabel('Permutation Importance (decrease in accuracy)')
-ax.set_title('Feature Importance for ECG Classification')
-plt.tight_layout()
-plt.savefig('/home/claude/supplementary_code/fig_feature_importance.png',
-            dpi=150, bbox_inches='tight')
-plt.close()
-
-print("\nTop features by importance:")
-for i in sorted_idx[:5]:
-    print(f"  {feature_cols[i]:20s}  {result.importances_mean[i]:.4f} "
-          f"+/- {result.importances_std[i]:.4f}")
-
-print("\nFigures saved: fig_classification_results.png, fig_feature_importance.png")
+    # Generate SHAP Plot
+    explainer = shap.TreeExplainer(clf)
+    shap_values = explainer.shap_values(X)
+    plt.figure(figsize=(8, 6))
+    shap.summary_plot(shap_values, X, feature_names=feature_names, show=False)
+    plt.title("SHAP Feature Importance (MI vs Normal)")
+    plt.tight_layout()
+    plt.savefig('fig_real_shap_summary.png', dpi=150, bbox_inches='tight')
+    print("Saved outputs: fig_worked_example_cm.png, fig_real_shap_summary.png")
