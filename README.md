@@ -42,24 +42,35 @@ python code1_ecg_preprocessing.py
 python code2_classification_pipeline.py
 python code3_physics_informed.py
 For immediate, browser-based execution without local environment setup, use the interactive Google Colab Notebook.
+## References and Datasets
 
-Public Datasets Referenced
-The models and methodologies discussed in the chapter and utilized in this repository draw upon the following open-access clinical databases:
+The models, methodologies, and scripts in this repository are built on foundational research and open-access clinical databases. If you adapt this code for your own work, please ensure you cite the appropriate primary sources below.
 
-PTB-XL (Used in codebase): A large publicly available electrocardiography dataset.
+### Public Clinical Datasets
+The following databases provide the clinical signals and metadata discussed in the chapter and utilized in the code:
 
-Link: https://physionet.org/content/ptb-xl/1.0.3/
+* **PTB-XL** (Used in the classification pipeline): A large publicly available 12-lead electrocardiography dataset. [View Dataset](https://physionet.org/content/ptb-xl/1.0.3/)
+* **INCART**: St. Petersburg INCART 12-lead Arrhythmia Database. [View Dataset](https://physionet.org/content/incartdb/1.0.0/)
+* **MIMIC-IV**: Medical Information Mart for Intensive Care IV. [View Dataset](https://physionet.org/content/mimiciv/2.2/)
+* **Chapman-Shaoxing**: A 12-lead electrocardiogram database for arrhythmia research. [View Dataset](https://figshare.com/collections/ChapmanECG/4560497/2)
 
-Citation: Wagner, P., Strodthoff, N., Bousseljot, R.-D., Kreiseler, D., Lunze, F. I., Samek, W., Schaeffter, T. (2020). PTB-XL, a large publicly available electrocardiography dataset. Scientific Data, 7(154).
+### Core Citations
 
-INCART: St. Petersburg INCART 12-lead Arrhythmia Database.
+**Primary Datasets and Repositories**
+* Wagner, P., Strodthoff, N., Bousseljot, R.-D., Kreiseler, D., Lunze, F. I., Samek, W., & Schaeffter, T. (2020). PTB-XL, a large publicly available electrocardiography dataset. *Scientific Data*, 7(154). https://doi.org/10.1038/s41597-020-0495-6
+* Goldberger, A. L., Amaral, L. A. N., Glass, L., Hausdorff, J. M., Ivanov, P. C., Mark, R. G., ... & Stanley, H. E. (2000). PhysioBank, PhysioToolkit, and PhysioNet: components of a new research resource for complex physiologic signals. *Circulation*, 101(23), e215-e220. https://doi.org/10.1161/01.CIR.101.23.e215
 
-Link: https://physionet.org/content/incartdb/1.0.0/
+**Machine Learning and Interpretability**
+* Lundberg, S. M., & Lee, S. I. (2017). A unified approach to interpreting model predictions. *Advances in Neural Information Processing Systems*, 30, 4765-4774.
+* Pedregosa, F., Varoquaux, G., Gramfort, A., Michel, V., Thirion, B., Grisel, O., ... & Duchesnay, E. (2011). Scikit-learn: Machine learning in Python. *Journal of Machine Learning Research*, 12, 2825-2830.
 
-MIMIC-IV: Medical Information Mart for Intensive Care IV.
+**Physics-Informed Modeling**
+* Raissi, M., Perdikaris, P., & Karniadakis, G. E. (2019). Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. *Journal of Computational Physics*, 378, 686-707. https://doi.org/10.1016/j.jcp.2018.10.045
+* Sahli Costabal, F., Yang, Y., Perdikaris, P., Hurtado, D. E., & Kuhl, E. (2020). Physics-informed neural networks for cardiac activation mapping. *Frontiers in Physics*, 8, 42. https://doi.org/10.3389/fphy.2020.00042
 
-Link: https://physionet.org/content/mimiciv/2.2/
+**Clinical Frameworks (CiPA and CRT)**
+* Colatsky, T., Fermini, B., Gintant, G., Pierson, J. B., Sager, P., Sekino, Y., ... & Stockbridge, N. (2016). The Comprehensive in Vitro Proarrhythmia Assay (CiPA) initiative: Update on progress. *Journal of Pharmacological and Toxicological Methods*, 81, 15-20.
+* Cikes, M., Sanchez-Martinez, S., Claggett, B., Duchateau, N., Piella, G., Butakoff, C., ... & Bijnens, B. (2019). Machine learning-based phenogrouping in heart failure to identify responders to cardiac resynchronization therapy. *European Journal of Heart Failure*, 21(1), 74-85.
 
-Chapman-Shaoxing: A 12-lead electrocardiogram database for arrhythmia research.
 
 Link: https://figshare.com/collections/ChapmanECG/4560497/2
